@@ -100,24 +100,17 @@ fn are_points_collinear(p1: (i32, i32), p2: (i32, i32), p3: (i32, i32)) -> bool 
     (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) == 0
 }
 
-fn remove_duplicates(vec: Vec<(i32, i32)>) -> Vec<(i32, i32)> {
-    let set: HashSet<_> = vec.into_iter().collect(); // Collect into a HashSet to remove duplicates
-    set.into_iter().collect() // Convert back to a Vec
-}
-
 fn main() {
     // let file_path = "input_small";
     let file_path = "input";
     let matrix = load_data(file_path).unwrap();
     let mut result_matrix = matrix.clone();
     let mut result_matrix2 = matrix.clone();
-    // let mut current_symbol = '.';
-    // let mut current_pos = (0, 0);
     let mut map = HashMap::new();
     for (y, row) in matrix.iter().enumerate() {
         for (x, c) in row.iter().enumerate() {
             if *c != '.' {
-                let antinodes_list = map.entry(*c).or_insert(Vec::new());
+                let antinodes_list = map.entry(*c).or_insert(HashSet::new());
                 let current_symbol = *c;
                 let current_pos = (x as i32, y as i32);
                 // println!("Symbol {} at: ({}, {})", c, current_pos.0, current_pos.1);
@@ -128,11 +121,10 @@ fn main() {
     }
     let mut count = 0;
     for (_, value) in &map {
-        let unique_antinodes = remove_duplicates(value.clone());
-        for (x, y) in unique_antinodes {
-            if result_matrix[y as usize][x as usize] != '#' {
+        for (x, y) in value {
+            if result_matrix[*y as usize][*x as usize] != '#' {
                 count += 1;
-                result_matrix[y as usize][x as usize] = '#';
+                result_matrix[*y as usize][*x as usize] = '#';
             }
         }
     }
@@ -142,7 +134,7 @@ fn main() {
     for (y, row) in matrix.iter().enumerate() {
         for (x, c) in row.iter().enumerate() {
             if *c != '.' {
-                let antinodes_list = map.entry(*c).or_insert(Vec::new());
+                let antinodes_list = map.entry(*c).or_insert(HashSet::new());
                 let current_symbol = *c;
                 let current_pos = (x as i32, y as i32);
                 // println!("Symbol {} at: ({}, {})", c, current_pos.0, current_pos.1);
@@ -153,11 +145,10 @@ fn main() {
     }
     let mut count = 0;
     for (_, value) in &map {
-        let unique_antinodes = remove_duplicates(value.clone());
-        for (x, y) in unique_antinodes {
-            if result_matrix2[y as usize][x as usize] != '#' {
+        for (x, y) in value {
+            if result_matrix2[*y as usize][*x as usize] != '#' {
                 count += 1;
-                result_matrix2[y as usize][x as usize] = '#';
+                result_matrix2[*y as usize][*x as usize] = '#';
             }
         }
     }
