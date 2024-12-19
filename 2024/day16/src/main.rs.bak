@@ -1,0 +1,410 @@
+use std::cmp::Reverse;
+use std::collections::HashMap;
+use std::collections::{BinaryHeap, HashSet};
+use std::fs::File;
+use std::io::{self, BufRead};
+
+// #[derive(Debug, Clone)]
+#[derive(Ord, PartialOrd, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+impl Direction {
+    fn to_coordinates(&self) -> (i32, i32) {
+        match self {
+            Direction::Up => (0, -1),
+            Direction::Down => (0, 1),
+            Direction::Left => (-1, 0),
+            Direction::Right => (1, 0),
+        }
+    }
+    fn to_clockwise(&self) -> Direction {
+        match self {
+            Direction::Up => Direction::Right,
+            Direction::Right => Direction::Down,
+            Direction::Down => Direction::Left,
+            Direction::Left => Direction::Up,
+        }
+    }
+    fn to_anticlockwise(&self) -> Direction {
+        match self {
+            Direction::Up => Direction::Left,
+            Direction::Right => Direction::Up,
+            Direction::Down => Direction::Right,
+            Direction::Left => Direction::Down,
+        }
+    }
+}
+
+fn load_file(file_path: &str) -> io::Result<Vec<Vec<char>>> {
+    let file = File::open(file_path)?;
+    let lines = io::BufReader::new(file).lines();
+    let mut map = Vec::new();
+    for line in lines {
+        let line = line?;
+        map.push(line.chars().collect());
+    }
+    Ok(map)
+}
+
+fn find_start(map: &Vec<Vec<char>>) -> (i32, i32) {
+    for (y, row) in map.iter().enumerate() {
+        for (x, c) in row.iter().enumerate() {
+            if *c == 'S' {
+                return (x as i32, y as i32);
+            }
+        }
+    }
+    panic!("No start found");
+}
+
+fn find_end(map: &Vec<Vec<char>>) -> (i32, i32) {
+    for (y, row) in map.iter().enumerate() {
+        for (x, c) in row.iter().enumerate() {
+            if *c == 'E' {
+                return (x as i32, y as i32);
+            }
+        }
+    }
+    panic!("No start found");
+}
+
+fn is_over(points: u32, scores: &Vec<u32>) -> bool {
+    if points >= 118496 {
+        return true;
+    }
+    if scores.len() == 0 {
+        return false;
+    }
+    let min = scores.iter().min().unwrap();
+    if points >= *min {
+        return true;
+    }
+    false
+}
+
+fn manhattan_distance(a: (i32, i32), b: (i32, i32)) -> i32 {
+    (a.0 - b.0).abs() + (a.1 - b.1).abs()
+}
+
+fn do_i_turn_clockwise(start: (i32, i32), next: (i32, i32)) -> bool {
+    let (sx, sy) = start;
+    let (nx, ny) = next;
+    let y_on_line = sy - nx;
+    (ny < y_on_line)
+}
+
+fn is_valid(pos: (i32, i32), map: &Vec<Vec<char>>) -> bool {
+    let (x, y) = pos;
+    x >= 0
+        && y >= 0
+        && y < map.len() as i32
+        && x < map[0].len() as i32
+        && map[y as usize][x as usize] != '#'
+}
+
+fn heuristic(a: (i32, i32), b: (i32, i32)) -> u32 {
+    ((a.0 - b.0).abs() + (a.1 - b.1).abs()) as u32
+}
+
+fn a_star_search(map: &Vec<Vec<char>>, start: (i32, i32)) -> Option<u32> {
+    let mut heap = BinaryHeap::new();
+    let mut visited = HashSet::new();
+
+    // Push initial state: (score, cost, position, direction)
+    heap.push(Reverse((0, 0, start, Direction::Right)));
+
+    while let Some(Reverse((score, cost, (x, y), direction))) = heap.pop() {
+        // Check if we've reached the target symbol 'E'
+        if map[y as usize][x as usize] == 'E' {
+            return Some(cost);
+        }
+
+        // Skip already visited states
+        if !visited.insert(((x, y), direction)) {
+            continue;
+        }
+
+        // Move in the current direction
+        let (dx, dy) = direction.to_coordinates();
+        let next = (x + dx, y + dy);
+        if is_valid(next, map) {
+            heap.push(Reverse((
+                cost + 1 + heuristic(next, find_end(map)),
+                cost + 1,
+                next,
+                direction,
+            )));
+        }
+
+        // Turn clockwise
+        let clockwise_dir = direction.to_clockwise();
+        let (dx, dy) = clockwise_dir.to_coordinates();
+        let next = (x + dx, y + dy);
+        if is_valid(next, map) {
+            heap.push(Reverse((
+                cost + 1000 + 1 + heuristic(next, find_end(map)),
+                cost + 1000 + 1,
+                next,
+                clockwise_dir,
+            )));
+        }
+
+        // Turn anticlockwise
+        let anticlockwise_dir = direction.to_anticlockwise();
+        let (dx, dy) = anticlockwise_dir.to_coordinates();
+        let next = (x + dx, y + dy);
+        if is_valid(next, map) {
+            heap.push(Reverse((
+                cost + 1000 + 1 + heuristic(next, find_end(map)),
+                cost + 1000 + 1,
+                next,
+                anticlockwise_dir,
+            )));
+        }
+    }
+
+    None
+}
+
+fn walk(map: &mut Vec<Vec<char>>, start: (i32, i32)) -> Vec<u32> {
+    let mut path: Vec<(i32, i32)> = Vec::new();
+    let mut scores: Vec<u32> = Vec::new();
+    let end = find_end(&map);
+
+    fn _walk(
+        map: &mut Vec<Vec<char>>,
+        start: (i32, i32),
+        end: (i32, i32),
+        lstart: (i32, i32),
+        current: (i32, i32),
+        current_direction: &Direction,
+        points: u32,
+        lpath: &mut Vec<(i32, i32)>,
+        lscores: &mut Vec<u32>,
+    ) {
+        let (x, y) = current;
+        let (dx, dy) = current_direction.to_coordinates();
+        let (nx, ny) = (x + dx, y + dy);
+        // println!("Current: {:?}", current);
+        // check points
+        if is_over(points + 1, lscores) {
+            // println!("Over {:?}", current);
+            return;
+        }
+        // check bounds
+        if nx < 0 || ny < 0 {
+            return;
+        }
+        if nx >= map[0].len() as i32 || ny >= map.len() as i32 {
+            return;
+        }
+
+        // if map[y as usize][x as usize] == 'X' {
+        //     // println!("Wall");
+        //     return;
+        // }
+        if lpath.contains(&current) {
+            // println!("Loop");
+            return;
+        }
+        // check wall
+        if map[y as usize][x as usize] == '#' {
+            // println!("Wall");
+            return;
+        }
+        // check end
+        if map[ny as usize][nx as usize] == 'E' {
+            // lpath.push(current);
+            // println!("Found end");
+            // println!("{:?}", lpath);
+            // println!("Length: {}", lpath.len());
+            // lpath.push((nx, ny));
+            println!("Path points: {}, len {}", points + 1, lpath.len() + 1);
+            // lpath.push((nx, ny));
+            lscores.push(points + 1);
+            return;
+        }
+
+        // println!("Point {:?}", current);
+        lpath.push(current);
+        // map[y as usize][x as usize] = 'X';
+        // let mut closest;
+        let mut order = Vec::new();
+
+        // let distance = manhattan_distance(end, (nx, ny));
+        // closest = distance;
+        // order.push((current_direction, (nx, ny), 1));
+        // let new_direction = current_direction.to_clockwise();
+        // let (dx, dy) = new_direction.to_coordinates();
+        // let (nx, ny) = (x + dx, y + dy);
+        // let distance = manhattan_distance(end, (nx, ny));
+        // if distance < closest {
+        //     closest = distance;
+        //     order.insert(0, (&new_direction, (nx, ny), 1001));
+        // } else {
+        //     order.push((&new_direction, (nx, ny), 1001));
+        // }
+        // let new_direction = current_direction.to_anticlockwise();
+        // let (dx, dy) = new_direction.to_coordinates();
+        // let (nx, ny) = (x + dx, y + dy);
+        // let distance = manhattan_distance(end, (nx, ny));
+        // if distance < closest {
+        //     order.insert(0, (&new_direction, (nx, ny), 1001));
+        // } else {
+        //     order.push((&new_direction, (nx, ny), 1001));
+        // }
+        let clockwise_direction = current_direction.to_clockwise();
+        let anticlockwise_direction = current_direction.to_anticlockwise();
+        order.push((current_direction, (nx, ny), 1));
+        if do_i_turn_clockwise(lstart, (nx, ny)) {
+            let (dx, dy) = clockwise_direction.to_coordinates();
+            let (nx, ny) = (x + dx, y + dy);
+            order.push((&clockwise_direction, (nx, ny), 1001));
+            let (dx, dy) = anticlockwise_direction.to_coordinates();
+            let (nx, ny) = (x + dx, y + dy);
+            order.push((&anticlockwise_direction, (nx, ny), 1001));
+        } else {
+            let (dx, dy) = anticlockwise_direction.to_coordinates();
+            let (nx, ny) = (x + dx, y + dy);
+            order.push((&anticlockwise_direction, (nx, ny), 1001));
+            let (dx, dy) = clockwise_direction.to_coordinates();
+            let (nx, ny) = (x + dx, y + dy);
+            order.push((&clockwise_direction, (nx, ny), 1001));
+        }
+
+        for (direction, next, points_to_add) in order {
+            _walk(
+                map,
+                start,
+                end,
+                lstart,
+                next,
+                direction,
+                points + points_to_add,
+                lpath,
+                lscores,
+            );
+            // map[y as usize][x as usize] = '.';
+        }
+        lpath.pop();
+    }
+    let mut all_scores = Vec::new();
+    // _walk(
+    //     map,
+    //     start,
+    //     end,
+    //     start,
+    //     &Direction::Up,
+    //     1000,
+    //     &mut path,
+    //     &mut scores,
+    // );
+    _walk(
+        map,
+        start,
+        end,
+        start,
+        start,
+        &Direction::Right,
+        0,
+        &mut path,
+        &mut scores,
+    );
+    // _walk(map, start, Direction::Left, 2000, &mut path, &mut scores);
+    all_scores.extend(scores);
+    all_scores
+}
+
+fn find_pattern(map: &Vec<Vec<char>>, pattern: &Vec<char>) -> Vec<(i32, i32)> {
+    let mut positions = Vec::new();
+    for (y, row) in map.iter().enumerate() {
+        for (x, c) in row.iter().enumerate() {
+            if *c == pattern[0] {
+                let mut found = true;
+                for (i, pc) in pattern.iter().enumerate() {
+                    if x + i >= row.len() || *pc != row[x + i] {
+                        found = false;
+                        break;
+                    }
+                }
+                if found {
+                    positions.push((x as i32, y as i32));
+                }
+                found = true;
+                for (i, pc) in pattern.iter().enumerate() {
+                    if y + i >= map.len() || *pc != map[y + i][x] {
+                        found = false;
+                        break;
+                    }
+                }
+                if found {
+                    positions.push((x as i32, y as i32));
+                }
+            }
+        }
+    }
+    positions
+}
+
+fn triangle_height(a: (i32, i32), b: (i32, i32), c: (i32, i32)) -> i32 {
+    let area = (a.0 * (b.1 - c.1) + b.0 * (c.1 - a.1) + c.0 * (a.1 - b.1)).abs() as f64 / 2.0;
+    let base = (((b.0 - a.0).pow(2) + (b.1 - a.1).pow(2)) as f64).sqrt();
+    if base == 0.0 {
+        return 0;
+    }
+    ((2.0 * area) / base) as i32
+}
+
+fn main() {
+    // let file_path = "../../src/input_small";
+    let file_path = "input";
+    // let file_path = "input_small";
+    let mut map = load_file(file_path).unwrap();
+    let start = find_start(&map);
+    let end = find_end(&map);
+    println!("{:?}", start);
+    println!("{:?}", end);
+    // let row_index = 1; // Choose the row (0-based index)
+    // let start = 1; // Start index of the slice
+    // let count = 25; // Number of characters to slice
+    //
+    // // Check if row_index is valid and slicing is within bounds
+    // for i in 1..10 {
+    //     let row_index = i;
+    //     if let Some(row) = map.get(row_index) {
+    //         if start + count <= row.len() {
+    //             let slice = &row[start..start + count].to_vec();
+    //             println!("Slice of row {}: {:?}", row_index, slice);
+    //             let patterns = find_pattern(&map, &slice);
+    //             println!("Patterns: {:?}", patterns);
+    //         } else {
+    //             println!("Slice out of bounds.");
+    //         }
+    //     } else {
+    //         println!("Row index out of bounds.");
+    //     }
+    // }
+
+    // for row in &map {
+    //     for c in row {
+    //         print!("{}", c);
+    //     }
+    //     println!();
+    // }
+    // let scores = walk(&mut map, start);
+    // if let Some(min) = scores.iter().min() {
+    //     println!("The minimum value in the vector is: {}", min);
+    // } else {
+    //     println!("The vector is empty.");
+    // }
+    if let Some(score) = a_star_search(&map, start) {
+        println!("Path found with score: {}", score);
+    } else {
+        println!("No path found.");
+    }
+}
