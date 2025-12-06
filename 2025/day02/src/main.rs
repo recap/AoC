@@ -54,16 +54,7 @@ fn all_equal<T: PartialEq>(v: &[T]) -> bool {
     }
 }
 fn pass_check2(num: u64) -> bool {
-    if is_repeated(num) {
-        return true;
-    }
     let s = num.to_string();
-    // if s.len() % 2 != 0 {
-    //     if all_chars_same(&s) {
-    //         return true;
-    //     }
-    //     return false;
-    // }
     for d in 2..=s.len() {
         let chunk_size = s.len() / d;
         let parts: Vec<String> = s
@@ -77,6 +68,10 @@ fn pass_check2(num: u64) -> bool {
         }
     }
     false
+}
+fn is_odd_len(num: u64) -> bool {
+    let num_str = num.to_string();
+    num_str.len() % 2 != 0
 }
 fn main() -> io::Result<()> {
     let lines = read_lines("data/input")?;
